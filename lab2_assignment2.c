@@ -38,7 +38,7 @@ void ConfigureUART(void) {
 //*****************************************************************************
 int main(void) {
   ConfigureUART();
-  uint32_t duty_cycle;
+  uint32_t duty_cycle = 0;
 
   float pwm_word;
   uint32_t systemClock;
@@ -49,6 +49,8 @@ int main(void) {
   pwm_word = systemClock / 200;
 
   SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
   SysCtlPWMClockSet(SYSCTL_PWMDIV_1);
   SysCtlPeripheralDisable(SYSCTL_PERIPH_PWM0);
   SysCtlPeripheralReset(SYSCTL_PERIPH_PWM0);
@@ -67,42 +69,46 @@ int main(void) {
   while (!SysCtlPeripheralReady(SYSCTL_PERIPH_ADC0)) {
   }
   GPIOPinTypeADC(GPIO_PORTE_AHB_BASE, GPIO_PIN_3);
-  UARTprintf("here!");
 
   // set joystick select to true
   GPIOPinTypeGPIOOutput(GPIO_PORTC_BASE, GPIO_PIN_6);
+  GPIOPinWrite(GPIO_PORTC_BASE, GPIO_PIN_6, GPIO_PIN_6);
+
+  //
+  // Enable the first sample sequencer to capture the value of channel 0 when
+  // the processor trigger occurs.
+  //
+  ADCSequenceConfigure(ADC0_BASE, 3, ADC_TRIGGER_PROCESSOR, 0);
+  ADCSequenceStepConfigure(ADC0_BASE, 3, 0,
+                           ADC_CTL_IE | ADC_CTL_END | ADC_CTL_CH0);
+  ADCSequenceEnable(ADC0_BASE, 3);
+
+  // Clear the interrupt status flag
+  ADCIntClear(ADC0_BASE, 3);
 
   UARTprintf("Main");
 
   while (1) {
-    //
-    // Enable the first sample sequencer to capture the value of channel 0 when
-    // the processor trigger occurs.
-    //
-    ADCSequenceConfigure(ADC0_BASE, 3, ADC_TRIGGER_PROCESSOR, 0);
-    ADCSequenceStepConfigure(ADC0_BASE, 3, 0,
-                             ADC_CTL_IE | ADC_CTL_END | ADC_CTL_CH0);
-    ADCSequenceEnable(ADC0_BASE, 3);
-    //
     // Trigger the sample sequence.
-    //
     ADCProcessorTrigger(ADC0_BASE, 3);
-    //
+
     // Wait until the sample sequence has completed.
-    //
     while (!ADCIntStatus(ADC0_BASE, 3, false)) {
     }
-    //
+
+    ADCIntClear(ADC0_BASE, 3);
+
     // Read the value from the ADC.
-    //
-    ADCSequenceDataGet(ADC0_BASE, 0, &duty_cycle);
+    ADCSequenceDataGet(ADC0_BASE, 3, &duty_cycle);
 
-    UARTprintf("duty cylce d=%d\n", duty_cycle);
+    duty_cycle = (duty_cycle * 100) / 4095;
 
-    if (duty_cycle > 100 || duty_cycle < 0) {
-      UARTprintf("duty cycle must be between 0 and 100\n");
-      continue;
-    }
+    UARTprintf("%d\n", duty_cycle);
+
+    // if (duty_cycle > 100 || duty_cycle < 0) {
+    //   UARTprintf("duty cycle must be between 0 and 100\n");
+    //   continue;
+    // }
 
     // 2: change value of led
     if (duty_cycle == 0) {
